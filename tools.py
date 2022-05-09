@@ -49,3 +49,37 @@ class BoundingBox:
             parent = parent.parent
 
         return x, y
+
+
+@dataclass
+class Vect2:
+    x: float
+    y: float
+
+
+class WorkerBase:
+    """
+    The basic object different AI functions inherit from
+
+    """
+
+    # def __init__(self, bot):
+    #     self.bot = bot
+
+    def desired_views(self) -> list[str]:
+        """
+        The views this worker wants rendered next frame.
+        """
+        return [""]
+
+    def update(self):
+        """
+        Main loop that's called every frame.
+        """
+
+    def debug(self):
+        """
+        Called when set to debug mode, shows DUCCI's internal thoughts.
+        Runs on its own thread, so as to allow blocking calls.
+        Ran after update
+        """
