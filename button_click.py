@@ -6,14 +6,21 @@ import tools
 class ButtonClicker(tools.WorkerBase):
     def __init__(self, bot):
         self.bot = bot
-        self.frame = 0
-        self.regularity = 8
+        self.regularity = 2
         self.circle_edge_tolerance = 7  # How wide of an area to check for the edge of a circle.
+        self.failed_to_find_button = 0  # How many times we've failed to find the button in a row.
+        self.try_repair_after_fails = 5  # When to try to fix the button.
+        self.current_task = "clicking button"
         # BGRA colours
         self.button_orange = (0, 100, 200, 255)
         self.button_blue = (200, 100, 0, 255)
         self.button_orange_edge = (0, 0, 153, 255)
         self.button_blue_edge = (153, 0, 0, 255)
+        self.repair_yellow = (47, 175, 175, 255)
+        b = self.bot.bounds["minigame"]
+        x = int(b.width * 0.04)
+        y = int(b.height * 0.95)
+        self.repair_button_pos = tools.Vect2(x, y)
 
         # Debug data
         self.clicked_this_frame = False
@@ -31,13 +38,45 @@ class ButtonClicker(tools.WorkerBase):
     def update(self):
         # TODO: Maybe try to calculate the "line" that the button moves along, based on the angle of the slider.
         # TODO: Track the speed of the button so I can predict where it will be next frame to click perfectly.
-        if self.frame % self.regularity == 0:
-            self.frame = 0
-            self.click_button()
-            self.clicked_this_frame = True
+        #  This could be done by figuring our the gradient of the button area,
+        #  the speed of the button, and the position of the button.
+        self.clicked_this_frame = False
+        if self.failed_to_find_button >= self.try_repair_after_fails:
+            self.current_task = "fixing button"
+            self.failed_to_find_button = 0
+        if self.current_task == "clicking button":
+            if self.bot.frame_num % self.regularity == 0:
+                pos = self.find_button()
+                if pos.x == -1:
+                    # Failed to find button
+                    self.found_button = False
+                    self.failed_to_find_button += 1
+                    return
+                self.found_button = True
+                self.button_middle = pos
+                self.bot.hands.move(pos.x + self.bot.bounds["minigame"].x1, pos.y + self.bot.bounds["minigame"].y1)
+                self.bot.hands.click()
+                self.clicked_this_frame = True
+                self.failed_to_find_button = 0
+        elif self.current_task == "fixing button":
+            img = self.bot.get_view("minigame")
+            b = self.bot.bounds["minigame"]
+            x = self.repair_button_pos.x
+            y = self.repair_button_pos.y
+            pixel = img[y][x]
+            col = self.repair_yellow
+            print(pixel, col)
+            if not all(c1 >= c2 for c1, c2 in zip(pixel, col)):
+                self.current_task = "clicking button"
+                return
+            real_x = b.x1 + x
+            real_y = b.y1 + y
+            self.bot.hands.move(real_x, real_y)
+            if self.bot.hands.click(duration=3):
+                self.current_task = "clicking button"
         else:
-            self.clicked_this_frame = False
-        self.frame += 1
+            print(f"Invalid task {self.current_task} for ButtonClicker.")
+            self.current_task = "clicking button"
 
     def debug(self):
         if self.clicked_this_frame and not self.debug_open:
@@ -91,20 +130,13 @@ class ButtonClicker(tools.WorkerBase):
             cv2.waitKey(0)
             self.debug_open = False
 
-    def click_button(self):
+    def find_button(self):
         img = self.bot.get_view("minigame")
         self.click_frame = img
         img_grey = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         circles = self.find_circles(img_grey)
         pos = self.find_center_of_button(circles, img)
-        if pos.x == -1:
-            # Failed to find button
-            self.found_button = False
-            return
-        self.found_button = True
-        self.button_middle = pos
-        self.bot.hands.move(pos.x + self.bot.bounds["minigame"].x1, pos.y + self.bot.bounds["minigame"].y1)
-        self.bot.hands.click()
+        return pos
 
     def find_circles(self, image_greyscale) -> np.ndarray:
         """
