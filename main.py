@@ -41,6 +41,7 @@ class Bot:
         self.render_num = 0
         self.renders_slow = 0
 
+        #self.current_task = ButtonClicker(self)
         self.current_task = Fisher(self)
 
         # limbs
@@ -153,6 +154,7 @@ class Bot:
     def update(self):
         while True:
             if self.paused.value:
+                self.hands.clear()
                 time.sleep(0.2)
                 continue
             # We floor the start here to more accurately calculate the time passed.
@@ -191,7 +193,7 @@ class Hands:
         self.click_command = {"duration": 0, "delay": 0}
         self.clicking_for = 0  # How many frames we are clicking for.
         self.is_clicking = False
-        self.held_keys = []
+        self.held_keys = dict()  # Keycode: {timing data}
 
     @property
     def mouse_x(self):
@@ -203,55 +205,68 @@ class Hands:
 
     def update(self):
         # TODO: If paused, clear out any actions, release any buttons.
-        if self.click_command["delay"] >= 0:
+        if self.click_command["delay"] > 0:
             self.click_command["delay"] -= 1
+            if self.click_command["delay"] == 0:
+                self.mouse.press(pynput.mouse.Button.left)
         else:
             self.click_command["duration"] -= 1
-        if self.click_command["delay"] == 0:
-            self.mouse.press(pynput.mouse.Button.left)
-        if self.click_command["duration"] <= 0:
+            if self.click_command["duration"] == 0:
+                self.mouse.release(pynput.mouse.Button.left)
+
+        keys_to_remove = []
+        for keycode, timings in self.held_keys.items():
+            # Count down delay
+            if timings["delay"] > 0:
+                timings["delay"] -= 1
+                if timings["delay"] == 0:
+                    self.keyboard.press(keycode)
+            # Count down held button
+            else:
+                timings["duration"] -= 1
+                if timings["duration"] <= 0:
+                    self.keyboard.release(keycode)
+                    keys_to_remove.append(keycode)
+        # Remove keys that finished.
+        for k in keys_to_remove:
+            del self.held_keys[k]
+
+    def clear(self):
+        if self.click_command["duration"] > 0 or self.click_command["delay"] > 0:
             self.mouse.release(pynput.mouse.Button.left)
+            self.click_command["duration"] = 0
+            self.click_command["delay"] = 0
 
-        # TODO: Do a dry run, and check that the logic of this system makes sense.
-        # Pass time
-        for i in range(len(self.held_keys)):
-            held_key = self.held_keys[i]
-            if held_key["delay"] >= 0:
-                held_key["delay"] -= 1
-            else:
-                held_key["time"] -= 1
+        for keycode in self.held_keys:
+            self.keyboard.release(keycode)
+        self.held_keys = dict()
 
-        # Press delayed keys
-        for i in range(len(self.held_keys)):
-            held_key = self.held_keys[i]
-            if held_key["delay"] == 0:
-                self.keyboard.press(held_key["key"])
-
-        # Release finished keys
-        new_keys = []
-        for i in range(len(self.held_keys)):
-            held_key = self.held_keys[i]
-            if held_key["time"] <= 0:
-                self.keyboard.release(held_key["key"])
-            else:
-                new_keys.append(self.held_keys[i])
-        self.held_keys = new_keys
-
-    def click(self, duration=1, delay=0):
-        """Clicks for one frame."""
+    def click(self, duration=1, delay=0) -> bool:
+        """Click."""
+        if self.click_command["duration"] >= 0:
+            return False
         if delay == 0:
             self.mouse.press(pynput.mouse.Button.left)
         self.click_command["duration"] = duration
         self.click_command["delay"] = delay
+        return True
+
+    def is_clicking(self) -> bool:
+        if self.click_command["duration"] <= 0:
+            return False
+        return True
 
     def move(self, x, y):
         """Move somewhere."""
         self.mouse.position = (x, y)
 
-    def press_key(self, key, duration=0, delay=0):
-        if delay <= 0:
+    def press_key(self, key, duration=1, delay=0) -> bool:
+        if key in self.held_keys:
+            return False
+        if delay == 0:
             self.keyboard.press(key)
-        self.held_keys.append({"key": key, "time": duration, "delay": delay})
+        self.held_keys[key] = {"duration": duration, "delay": delay}
+        return True
 
 
 def render(paused):
@@ -261,6 +276,7 @@ def render(paused):
             continue
         render_start = time.perf_counter()
         names = multiprocessing.shared_memory.ShareableList(name="render areas")
+        names = [x for x in names]
         render_areas = []
         for name in names:
             if name is None:
