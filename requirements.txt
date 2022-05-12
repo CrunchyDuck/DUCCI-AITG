@@ -1,0 +1,6 @@
+mss==6.1.0
+numpy==1.22.3
+opencv-python==4.5.5.64
+pynput==1.7.6
+pywin32==304
+six==1.16.0
