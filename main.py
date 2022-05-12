@@ -142,7 +142,21 @@ class Bot:
                     cv2.imshow(f"{area} view", view)
             cv2.waitKey(0)
         elif key == pynput.keyboard.Key.f4:
-            print(f"mousex: {self.hands.mouse_x}\nmousey: {self.hands.mouse_y}")
+            # TODO: Print positions relative to minigame, window.
+            x = self.hands.mouse_x
+            y = self.hands.mouse_y
+            print(f"Screen pos:\nx: {self.hands.mouse_x}\ny: {self.hands.mouse_y}")
+
+            b = self.bounds["window"]
+            w_percent = (x - b.x1) / b.width
+            h_percent = (y - b.y1) / b.height
+            print(f"Relative to window area:\nx: {w_percent}%\ny: {h_percent}%")
+
+            b = self.bounds["minigame"]
+            w_percent = (x - b.x1) / b.width
+            h_percent = (y - b.y1) / b.height
+            print(f"Relative to minigame area:\nx: {w_percent}%\ny: {h_percent}%")
+            print()
 
     def get_views(self):
         #self.window_view, self.minigame_view = take_screenshot(self.window_bounds, self.minigame_bounds)
