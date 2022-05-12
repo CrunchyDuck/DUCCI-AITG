@@ -40,6 +40,7 @@ class Bot:
         self.render_time_memory = self.frame_time_memory
         self.render_num = 0
         self.renders_slow = 0
+        self.lock = multiprocessing.Lock()
 
         #self.current_task = ButtonClicker(self)
         self.current_task = Fisher(self)
@@ -55,12 +56,9 @@ class Bot:
         # To get this working, I'm using both many forms of shared memory -
         # SharedMemory and ShareableList is used to communicate unknown or complex data
         # Value is used to communicate basic data, such as debugging values or the paused state.
-        render_loop = multiprocessing.Process(target=render, args=(self.paused,), daemon=True)
+        render_loop = multiprocessing.Process(target=render, args=(self.paused, self.lock), daemon=True)
         render_loop.start()
         self.update()
-        while True:
-            time.sleep(3)
-            # time.sleep(1)
 
     def add_render_area(self, name):
         b = self.bounds[name]
@@ -161,12 +159,13 @@ class Bot:
             frame_start = time.perf_counter()
 
             # Update which frames should be displayed.
-            l = [None] * 5
-            gathered_data = self.current_task.desired_views()
-            l[:len(gathered_data)] = gathered_data[:]
-            areas = multiprocessing.shared_memory.ShareableList(name="render areas")
-            for i in range(len(l)):
-                areas[i] = l[i]
+            with self.lock:
+                l = [None] * 5
+                gathered_data = self.current_task.desired_views()
+                l[:len(gathered_data)] = gathered_data[:]
+                areas = multiprocessing.shared_memory.ShareableList(name="render areas")
+                for i in range(len(l)):
+                    areas[i] = l[i]
 
             self.hands.update()
 
@@ -204,7 +203,6 @@ class Hands:
         return self.mouse.position[1]
 
     def update(self):
-        # TODO: If paused, clear out any actions, release any buttons.
         if self.click_command["delay"] > 0:
             self.click_command["delay"] -= 1
             if self.click_command["delay"] == 0:
@@ -269,14 +267,15 @@ class Hands:
         return True
 
 
-def render(paused):
+def render(paused, lock: multiprocessing.Lock):
     while True:
         if paused.value:
             time.sleep(0.1)
             continue
         render_start = time.perf_counter()
-        names = multiprocessing.shared_memory.ShareableList(name="render areas")
-        names = [x for x in names]
+        with lock:
+            names = multiprocessing.shared_memory.ShareableList(name="render areas")
+            names = [x for x in names]
         render_areas = []
         for name in names:
             if name is None:
