@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import numpy as np
 
 
 @dataclass
@@ -55,6 +56,29 @@ class BoundingBox:
 class Vect2:
     x: float
     y: float
+
+
+class ColorRange:
+    def __init__(self, color_low: tuple, color_high: tuple):
+        assert len(color_low) == len(color_high)
+        self.c1 = color_low
+        self.c2 = color_high
+
+    def is_within(self, color: tuple) -> bool:
+        """
+        Checks if color is within self.c1 and self.c2
+        """
+        if len(color) != len(self.c1):
+            raise ValueError
+        for i in range(len(color)):
+            if not self.c1[i] <= color[i] <= self.c2[i]:
+                return False
+        return True
+
+    def is_any(self, color: tuple) -> bool:
+        if len(color) != len(self.c1):
+            raise ValueError
+        return np.array_equal(color, self.c1) or np.array_equal(color, self.c2)
 
 
 class WorkerBase:
